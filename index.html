@@ -164,7 +164,8 @@ details summary{cursor:pointer;font-weight:600}
     <section id="bmSec" aria-labelledby="h-bm">
       <h2 id="h-bm">Basemap</h2>
       <div class="basemap" id="basemap">
-        <button data-b="streets" aria-pressed="true">Streets</button>
+        <button data-b="grey" aria-pressed="true">Grey</button>
+        <button data-b="streets" aria-pressed="false">Streets</button>
         <button data-b="satellite" aria-pressed="false">Satellite</button>
         <button data-b="none" aria-pressed="false">None</button>
       </div>
@@ -218,8 +219,9 @@ const cgFC={type:'FeatureCollection',features:CG.map((s,i)=>({type:'Feature',geo
 
 /* ---------- map ---------- */
 const TILES={
-  streets:{light:'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',dark:'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',attr:'© OpenStreetMap contributors © CARTO'},
-  satellite:{light:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Imagery © Esri, Maxar, Earthstar Geographics'}
+  grey:{light:'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',dark:'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',attr:'Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors',max:16},
+  streets:{light:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',attr:'Basemap © Esri, HERE, Garmin, USGS, © OpenStreetMap contributors',max:19},
+  satellite:{light:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Imagery © Esri, Maxar, Earthstar Geographics',max:19}
 };
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
 const map=new maplibregl.Map({container:'map',style:{version:8,sources:{},layers:[{id:'bg',type:'background',paint:{'background-color':css('--mapbg')}}]},
@@ -228,18 +230,18 @@ map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right'
 map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-right');
 await new Promise(r=>map.on("load",r)); window.atlasMap=map;
 
-let basemap='streets', tilesOk=true;
+let basemap='grey', tilesOk=true;
 function setBasemap(b){
   basemap=b;
   if(map.getLayer('base'))map.removeLayer('base'); if(map.getSource('base'))map.removeSource('base');
   document.querySelectorAll('#basemap button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.b===b));
   if(b==='none'||!tilesOk)return;
   const t=TILES[b]; const url=(isDark()&&t.dark)?t.dark:t.light;
-  map.addSource('base',{type:'raster',tiles:[url],tileSize:256,attribution:t.attr,maxzoom:19});
+  map.addSource('base',{type:'raster',tiles:[url],tileSize:256,attribution:t.attr,maxzoom:t.max});
   map.addLayer({id:'base',type:'raster',source:'base',paint:{'raster-opacity':b==='satellite'?0.9:1}},map.getLayer('district-line')?'district-line':undefined);
 }
 // Probe whether tiles can load here (they are blocked inside some embedded viewers).
-tilesOk=await new Promise(res=>{const im=new Image();const to=setTimeout(()=>res(false),4000);im.onload=()=>{clearTimeout(to);res(true)};im.onerror=()=>{clearTimeout(to);res(false)};im.src='https://a.basemaps.cartocdn.com/light_all/10/730/478.png'});
+tilesOk=await new Promise(res=>{const im=new Image();const to=setTimeout(()=>res(false),4000);im.onload=()=>{clearTimeout(to);res(true)};im.onerror=()=>{clearTimeout(to);res(false)};im.src='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/10/478/730'});
 if(!tilesOk){$('#bmSec').hidden=true;const n=$('#mapnote');n.textContent='Background map tiles are unavailable in this viewer; boundaries and data are shown on a plain background.';n.hidden=false}
 
 /* layers */
@@ -461,14 +463,14 @@ function repaint(){
   P('study-fill','fill-color',css('--study'));P('study-line','line-color',css('--study'));
   P('bw-c','circle-stroke-color',css('--bore'));P('pw-c','circle-stroke-color',css('--panel'));P('parks-c','circle-stroke-color',css('--panel'));
   P('cg-c','circle-color',css('--panel'));P('cg-c','circle-stroke-color',['case',['==',['get','tele'],1],css('--accent'),css('--cgwb')]);
-  if(basemap==='streets')setBasemap('streets');
+  if(basemap==='grey')setBasemap('grey');
   render();
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',repaint);
 new MutationObserver(repaint).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 document.querySelectorAll('#basemap button').forEach(b=>b.addEventListener('click',()=>setBasemap(b.dataset.b)));
 
-setBasemap(tilesOk?'streets':'none');
+setBasemap(tilesOk?'grey':'none');
 map.fitBounds([[77.45,12.83],[77.75,13.15]],{padding:20,duration:0});
 render();
 })();
