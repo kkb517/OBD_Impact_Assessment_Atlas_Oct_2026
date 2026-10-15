@@ -161,7 +161,7 @@ details summary{cursor:pointer;font-weight:600}
     <section class="chart" aria-labelledby="h-rain">
       <h2 id="h-rain">Rainfall and wells holding water</h2>
       <div id="rainChart"></div>
-      <p class="note">Bars: monthly rainfall (IMD 0.25°; 2026 provisional). Ticks: 1991–2020 normal. Line: share of monitored wells with water (Lalbagh excluded). Click a month to map it.</p>
+      <p class="note">739 wells are read every month; others were read once or a few times (including 212 Lalbagh wells surveyed in Sep 2025). Bars: monthly rainfall (IMD 0.25°; 2026 provisional). Ticks: 1991–2020 normal. Line: share of monitored wells with water (Lalbagh excluded). Click a month to map it.</p>
     </section>
 
     <section aria-labelledby="h-go">
@@ -323,7 +323,7 @@ map.addLayer({id:'pw-c',type:'circle',source:'pw',paint:{
 
 const layerDefs=[
   {g:'Monitoring data'},
-  {id:'pw',label:'Percolation wells (monthly)',ids:['pw-c'],on:true,color:'--w3',n:PW.wells.length},
+  {id:'pw',label:'Percolation wells (monitored monthly)',ids:['pw-c'],on:true,color:'--w3',n:PW.regular??PW.wells.length},
   {id:'bw',label:'Borewells (UWBe)',ids:['bw-c'],on:true,color:'--bore',n:BW.wells.length},
   {id:'cg',label:'CGWB stations',ids:['cg-c'],on:false,color:'--cgwb',n:CG.length},
   {id:'parks',label:'OBD sites (to Mar 2025)',ids:['parks-c'],on:false,color:'--park',n:parks.features.length},
@@ -391,14 +391,14 @@ function applyFilters(){
   map.setFilter('infil-c',F.donor?['==',['coalesce',['get','donor'],''],F.donor]:null);
   const sites=parks.features.map(f=>f.properties).filter(passP);
   const wells=sites.reduce((s,p)=>s+p.wells,0), m3=wells*RECH;
-  const mon=PW.wells.filter(passPW).length;
+  const mon=PW.wells.filter(w=>passPW(w)&&w[10]>=11).length;
   const who=F.donor||'All donors', where=F.zone?` in ${F.zone}${F.zone==='Outside BBMP'?'':' zone'}`:' across Bengaluru';
   const when=F.fy?(F.fy===NOFY?', completed after March 2025':`, FY ${F.fy}`):'';
   let h=`<div>${active()?'<span class="chip">Filtered</span> ':''}<b>${esc(who)}</b>${esc(when)}${esc(where)}</div>`;
   if(F.fy===NOFY) h+=`<div class="small">The site list on the map runs to March 2025, so newer sites are counted only through the monitored wells.</div>`;
   else h+=`<div class="row"><span><b>${fmt(sites.length)}</b> locations</span><span><b>${fmt(wells)}</b> percolation wells</span></div>
     <div class="imp">Design recharge about <b>${fmt(m3/1000)}</b> million litres a year: about <b>${fmt(m3*1000/(TANKER*1000))}</b> tanker loads of 6,000 L, or basic water needs of <b>${fmt(m3*1000/(LPD*365))}</b> people at ${LPD} L a day.</div>`;
-  h+=`<div class="row"><span><b>${fmt(mon)}</b> of these wells are in the monthly monitoring</span>${active()?'<button class="linkbtn" id="fZoom">Zoom to selection</button> <button class="linkbtn" id="fReset">Clear filters</button>':''}</div>`;
+  h+=`<div class="row"><span><b>${fmt(mon)}</b> in regular monthly monitoring</span>${active()?'<button class="linkbtn" id="fZoom">Zoom to selection</button> <button class="linkbtn" id="fReset">Clear filters</button>':''}</div>`;
   $('#fsum').innerHTML=h;
   $('#fReset')?.addEventListener('click',()=>{F.donor=F.fy=F.zone='';['#fDonor','#fFY','#fZone'].forEach(s=>$(s).value='');applyFilters()});
   $('#fZoom')?.addEventListener('click',()=>{
@@ -517,7 +517,7 @@ map.on('click','pw-c',e=>{
   const w=PW.wells[f.properties.i]; const v=w[7][cur];
   const rain=months.map(m=>rainBy[m]?.rain_mm??null);
   pop(`<div class="pp"><h3>${esc(w[4])}</h3><div class="meta">Percolation well ${esc(w[0])} · ${esc(w[3])} · ${esc(w[5])}</div>
-  <table><tr><td>Water in well, ${mLabel(months[cur])}</td><td>${v==null?'not read':v===0?'dry':v+' ft'}</td></tr><tr><td>Well depth</td><td>${w[6]??'–'} ft</td></tr><tr><td>Months with water</td><td>${w[7].filter(x=>x>0).length} of ${w[7].filter(x=>x!=null).length} read</td></tr></table>
+  <table><tr><td>Water in well, ${mLabel(months[cur])}</td><td>${v==null?'not read':v===0?'dry':v+' ft'}</td></tr><tr><td>Well depth</td><td>${w[6]??'–'} ft</td></tr><tr><td>Months with water</td><td>${w[7].filter(x=>x>0).length} of ${w[7].filter(x=>x!=null).length} read</td></tr><tr><td>Monitoring</td><td>${w[10]>=11?'regular':w[3]==='Lalbagh'?'one-time survey':'occasional'}</td></tr></table>
   ${spark(months.map(mShort),w[7],{bars:true,unit:'ft of water (bars), rainfall (shaded)',rain})}</div>`)(e.lngLat);
 });
 map.on('click','bw-c',e=>{
