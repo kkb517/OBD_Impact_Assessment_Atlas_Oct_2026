@@ -116,7 +116,7 @@ details summary{cursor:pointer;font-weight:600}
 <div class="app">
   <aside class="panel" aria-label="Atlas controls">
     <header class="brand">
-      <img src="data/logo.png" alt="United Way Bengaluru">
+      <img src="logo.png" alt="United Way Bengaluru">
       <div><h1>UWBe Impact Atlas</h1><p class="sub">One Billion Drops · percolation wells and groundwater, Bengaluru</p></div>
     </header>
 
@@ -202,7 +202,7 @@ const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','De
 const mLabel=m=>MON[+m.slice(5,7)-1]+' '+m.slice(0,4);
 const mShort=m=>MON[+m.slice(5,7)-1];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const get=async f=>{try{const r=await fetch('data/'+f);if(!r.ok)return null;return await r.json()}catch(e){return null}};
+const get=async f=>{try{const r=await fetch(f);if(!r.ok)return null;return await r.json()}catch(e){return null}};
 
 const [PW,BW,CG,RF,parks,zones,bbmp,district,ws,sws,mws,study,gba]=await Promise.all(
   ['percolation.json','borewells.json','cgwb.json','rainfall.json','parks.geojson','bbmp_zones.geojson','bbmp_boundary.geojson','district.geojson','watersheds.geojson','subwatersheds.geojson','micro_watersheds.geojson','study_units.geojson','gba_corporations.geojson'].map(get));
