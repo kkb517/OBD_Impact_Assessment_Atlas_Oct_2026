@@ -114,6 +114,8 @@ details summary{cursor:pointer;font-weight:600}
 .filters label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:2px}
 .filters select{width:100%;font:inherit;font-size:.9rem;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);min-width:0}
 .filters .full{grid-column:1/-1}
+.filters .chk{display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--ink);margin:0}
+.filters select:disabled,.filters .chk:has(input:disabled){opacity:.5}
 .fsum{background:var(--soft);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:.9rem;display:grid;gap:6px}
 .fsum .row{display:flex;flex-wrap:wrap;gap:4px 14px}
 .fsum b{font-family:var(--display);font-variant-numeric:tabular-nums}
@@ -140,6 +142,11 @@ details summary{cursor:pointer;font-weight:600}
         <div class="full"><label for="fDonor">Donor</label><select id="fDonor"><option value="">All donors</option></select></div>
         <div><label for="fFY">Financial year</label><select id="fFY"><option value="">All years</option></select></div>
         <div><label for="fZone">BBMP zone</label><select id="fZone"><option value="">All zones</option></select></div>
+        <div class="full"><label for="fMon">Percolation wells shown</label><select id="fMon"><option value="all">All monitored wells (any month)</option><option value="range">Wells monitored every month, from–to</option></select></div>
+        <div><label for="fFrom">From</label><select id="fFrom" disabled></select></div>
+        <div><label for="fTo">To</label><select id="fTo" disabled></select></div>
+        <div class="full"><label class="chk"><input type="checkbox" id="fGap" disabled> Allow one missed month in the period</label></div>
+        <p class="small full" style="margin:0">Monthly monitoring began in KC (Bommanahalli) valley in May 2025 and in Hebbal and Vrishabhavathi valleys in August 2025; all three are read together from September 2025. A period starting before September 2025 therefore shows KC wells only, or KC with part of Hebbal and Vrishabhavathi.</p>
       </div>
       <div class="fsum" id="fsum" aria-live="polite"></div>
     </section>
@@ -232,7 +239,7 @@ const get=async f=>{try{const r=await fetch(f);if(!r.ok)return null;return await
 const [PW,BW,CG,RF,parks,zones,bbmp,district,ws,sws,mws,study,gba,wpts,wards,ingres,infil,survey,iisc,VS]=await Promise.all(
   ['percolation.json','borewells.json','cgwb.json','rainfall.json','parks.geojson','bbmp_zones.geojson','bbmp_boundary.geojson','district.geojson','watersheds.geojson','subwatersheds.geojson','micro_watersheds.geojson','study_units.geojson','gba_corporations.geojson',
    'well_points.geojson','wards.geojson','ingres.geojson','infiltration.geojson','survey.geojson','iisc0713.geojson','valley_summary.json'].map(get));
-/* design recharge per well (m³/yr): 4.27 m³ per fill × 30 effective rainy days */
+/* estimated recharge capacity per well (m³/yr): 4.27 m³ per fill × 30 effective rainy days */
 const RECH=128.1, TANKER=6, LPD=75;
 
 const months=PW.months; let cur=months.indexOf('2025-09'); if(cur<0)cur=0;
@@ -369,15 +376,16 @@ function legend(){
 legend();
 
 /* ---------- donor / financial-year / zone filters ---------- */
-const F={donor:'',fy:'',zone:''}, NOFY='__none';
+const F={donor:'',fy:'',zone:'',mon:'all',from:0,to:0,gap:false}, NOFY='__none';
 const fmt=n=>Math.round(n).toLocaleString('en-IN');
 const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>x.localeCompare(y));
 function fill(sel,vals,extra){vals.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;sel.append(o)});if(extra){const o=document.createElement('option');o.value=extra[0];o.textContent=extra[1];sel.append(o)}}
 fill($('#fDonor'),uniq([...parks.features.map(f=>f.properties.donor),...wpts.features.map(f=>f.properties.donor),...PW.wells.map(w=>w[5])]));
 fill($('#fFY'),uniq(parks.features.map(f=>f.properties.fy)).reverse(),[NOFY,'Not in site list (after Mar 2025)']);
 fill($('#fZone'),uniq([...parks.features.map(f=>f.properties.zone),...PW.wells.map(w=>w[9]||'Outside BBMP')]));
-const active=()=>!!(F.donor||F.fy||F.zone);
-const passPW=w=>(!F.donor||w[5]===F.donor)&&(!F.fy||(F.fy===NOFY?w[8]==null:w[8]===F.fy))&&(!F.zone||(w[9]||'Outside BBMP')===F.zone);
+const active=()=>!!(F.donor||F.fy||F.zone||F.mon==='range');
+const passMon=w=>{if(F.mon!=='range')return true;let n=0;for(let i=F.from;i<=F.to;i++)if(w[7][i]!=null)n++;return n>=(F.to-F.from+1)-(F.gap?1:0)};
+const passPW=w=>passMon(w)&&(!F.donor||w[5]===F.donor)&&(!F.fy||(F.fy===NOFY?w[8]==null:w[8]===F.fy))&&(!F.zone||(w[9]||'Outside BBMP')===F.zone);
 const passP=p=>(!F.donor||p.donor===F.donor)&&(!F.fy||(F.fy===NOFY?!p.fy:p.fy===F.fy))&&(!F.zone||!p.zone||p.zone===F.zone);
 function expr(withZone){
   const e=['all'];
@@ -397,10 +405,11 @@ function applyFilters(){
   let h=`<div>${active()?'<span class="chip">Filtered</span> ':''}<b>${esc(who)}</b>${esc(when)}${esc(where)}</div>`;
   if(F.fy===NOFY) h+=`<div class="small">The site list on the map runs to March 2025, so newer sites are counted only through the monitored wells.</div>`;
   else h+=`<div class="row"><span><b>${fmt(sites.length)}</b> locations</span><span><b>${fmt(wells)}</b> percolation wells</span></div>
-    <div class="imp">Design recharge about <b>${fmt(m3/1000)}</b> million litres a year: about <b>${fmt(m3*1000/(TANKER*1000))}</b> tanker loads of 6,000 L, or basic water needs of <b>${fmt(m3*1000/(LPD*365))}</b> people at ${LPD} L a day.</div>`;
+    <div class="imp">Estimated recharge capacity about <b>${fmt(m3/1000)}</b> million litres a year: about <b>${fmt(m3*1000/(TANKER*1000))}</b> tanker loads of 6,000 L, or basic water needs of <b>${fmt(m3*1000/(LPD*365))}</b> people at ${LPD} L a day.<br><span class="small">Estimated recharge capacity = what the wells can send into the ground if each fills and drains on every effective rainy day (4.27 m³ × 30 days a year per well). It is an estimate, not a measured volume.</span></div>`;
+  if(F.mon==='range'){const k=PW.wells.filter(passPW).length;h+=`<div class="row"><span><b>${fmt(k)}</b> wells read every month${F.gap?' (one miss allowed)':''}, ${mLabel(months[F.from])} to ${mLabel(months[F.to])}</span></div>`}
   h+=`<div class="row"><span><b>${fmt(mon)}</b> in regular monthly monitoring</span>${active()?'<button class="linkbtn" id="fZoom">Zoom to selection</button> <button class="linkbtn" id="fReset">Clear filters</button>':''}</div>`;
   $('#fsum').innerHTML=h;
-  $('#fReset')?.addEventListener('click',()=>{F.donor=F.fy=F.zone='';['#fDonor','#fFY','#fZone'].forEach(s=>$(s).value='');applyFilters()});
+  $('#fReset')?.addEventListener('click',()=>{F.donor=F.fy=F.zone='';F.mon='all';['#fDonor','#fFY','#fZone'].forEach(s=>$(s).value='');$('#fMon').value='all';monUI();applyFilters()});
   $('#fZoom')?.addEventListener('click',()=>{
     const pts=[...parks.features.filter(f=>passP(f.properties)).map(f=>f.geometry.coordinates),...PW.wells.filter(passPW).map(w=>[w[2],w[1]])];
     if(pts.length)map.fitBounds(boundsOf(pts),{padding:50,maxZoom:15.5});
@@ -409,7 +418,19 @@ function applyFilters(){
   render();
 }
 ['fDonor','fFY','fZone'].forEach(id=>$('#'+id).addEventListener('change',e=>{F[{fDonor:'donor',fFY:'fy',fZone:'zone'}[id]]=e.target.value;applyFilters()}));
+months.forEach((m,i)=>{['#fFrom','#fTo'].forEach(s=>{const o=document.createElement('option');o.value=i;o.textContent=mLabel(m);$(s).append(o)})});
+F.from=Math.max(0,months.indexOf('2025-09'));F.to=months.length-1;$('#fFrom').value=F.from;$('#fTo').value=F.to;
+function monUI(){const on=F.mon==='range';['#fFrom','#fTo','#fGap'].forEach(s=>$(s).disabled=!on)}
+$('#fMon').addEventListener('change',e=>{F.mon=e.target.value;monUI();applyFilters()});
+$('#fFrom').addEventListener('change',e=>{F.from=+e.target.value;if(F.from>F.to){F.to=F.from;$('#fTo').value=F.to}applyFilters()});
+$('#fTo').addEventListener('change',e=>{F.to=+e.target.value;if(F.to<F.from){F.from=F.to;$('#fFrom').value=F.from}applyFilters()});
+$('#fGap').addEventListener('change',e=>{F.gap=e.target.checked;applyFilters()});
 
+function statFor(i){
+  if(!active())return allBy[months[i]];
+  const vals=PW.wells.filter(passPW).map(w=>w[7][i]).filter(v=>v!=null);
+  return vals.length?{wet:vals.filter(v=>v>0).length/vals.length*100,mean:vals.reduce((s,v)=>s+v,0)/vals.length,n:vals.length}:null;
+}
 /* ---------- month rendering ---------- */
 function bwIndexFor(m){let k=-1;BW.months.forEach((x,i)=>{if(x<=m)k=i});return k}
 function render(){
@@ -418,9 +439,7 @@ function render(){
   PW.wells.forEach((w,i)=>{const v=w[7][cur];map.setFeatureState({source:'pw',id:i},(v==null||!passPW(w))?{has:false}:{has:true,c:wellColor(v)})});
   const k=bwIndexFor(m);
   BW.wells.forEach((w,i)=>{let v=null;for(let j=k;j>=0&&v==null;j--)v=w[4][j];map.setFeatureState({source:'bw',id:i},{c:v==null?css('--soft'):boreColor(v)})});
-  let a=allBy[m]; const r=rainBy[m];
-  if(active()){const vals=PW.wells.filter(passPW).map(w=>w[7][cur]).filter(v=>v!=null);
-    a=vals.length?{wet:vals.filter(v=>v>0).length/vals.length*100,mean:vals.reduce((s,v)=>s+v,0)/vals.length,n:vals.length}:null}
+  const a=statFor(cur); const r=rainBy[m];
   $('#kWet').textContent=a?Math.round(a.wet)+'%':'–';
   $('#kMean').textContent=a?a.mean.toFixed(1)+' ft':'–';
   $('#kWetL').textContent=active()?(a?`of ${a.n} filtered wells hold water`:'no filtered wells read this month'):'of monitored wells hold water';
@@ -454,9 +473,11 @@ function drawRain(){
     if(i%2===0||on)s+=`<text x="${x+bw/2}" y="${H-pb+11}" font-size="8.5" text-anchor="middle" fill="${on?'var(--ink)':'var(--muted)'}" font-weight="${on?700:400}">${mShort(m)}</text>`;
     if(m.endsWith('-01')||i===0)s+=`<text x="${x+bw/2}" y="${H-2}" font-size="8.5" text-anchor="middle" fill="var(--muted)">${m.slice(0,4)}</text>`;
   });
-  const pts=months.map((m,i)=>allBy[m]?`${pl+i*bw+bw/2},${y2(allBy[m].wet)}`:null).filter(Boolean).join(' ');
+  const ST=months.map((m,i)=>statFor(i));
+  const pts=months.map((m,i)=>ST[i]?`${pl+i*bw+bw/2},${y2(ST[i].wet)}`:null).filter(Boolean).join(' ');
   s+=`<polyline points="${pts}" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linejoin="round"/>`;
-  months.forEach((m,i)=>{if(allBy[m])s+=`<circle cx="${pl+i*bw+bw/2}" cy="${y2(allBy[m].wet)}" r="${i===cur?4:2.4}" fill="var(--green)" stroke="var(--panel)" stroke-width="1"/>`});
+  if(F.mon==='range')s+=`<rect x="${pl+F.from*bw}" y="${pt}" width="${(F.to-F.from+1)*bw}" height="3" fill="var(--green)" opacity=".6"/>`;
+  months.forEach((m,i)=>{if(ST[i])s+=`<circle cx="${pl+i*bw+bw/2}" cy="${y2(ST[i].wet)}" r="${i===cur?4:2.4}" fill="var(--green)" stroke="var(--panel)" stroke-width="1"/>`});
   s+='</svg>';
   const el=$('#rainChart'); el.innerHTML=s;
   el.querySelectorAll('[data-i]').forEach(r=>r.addEventListener('click',()=>{cur=+r.dataset.i;render()}));
@@ -538,7 +559,7 @@ map.on('click','cg-c',e=>{
 map.on('click','parks-c',e=>{
   handled=true;const p=e.features[0].properties;
   pop(`<div class="pp"><h3>${esc(p.name)}</h3><div class="meta">${esc(p.type)} · ${esc(p.zone)} zone</div>
-  <table><tr><td>Donor</td><td>${esc(p.donor)}</td></tr><tr><td>Percolation wells</td><td>${p.wells}</td></tr><tr><td>Financial year completed</td><td>${p.fy??'–'}</td></tr><tr><td>Design recharge</td><td>${fmt(p.wells*RECH)} m³/yr</td></tr></table></div>`)(e.lngLat);
+  <table><tr><td>Donor</td><td>${esc(p.donor)}</td></tr><tr><td>Percolation wells</td><td>${p.wells}</td></tr><tr><td>Financial year completed</td><td>${p.fy??'–'}</td></tr><tr><td>Estimated recharge capacity</td><td>${fmt(p.wells*RECH)} m³/yr</td></tr></table></div>`)(e.lngLat);
 });
 map.on('click','wpts-c',e=>{
   handled=true;const p=e.features[0].properties;
@@ -574,7 +595,7 @@ map.on('click','ingres-fill',e=>{
 const VK={'Koramangala-Challaghatta':'KC (Bommanahalli)','Hebbal':'Hebbal','Vrishabhavathi':'Vrishabhavathi'};
 function valleyPop(v,ll){
   const rows=VS&&VS[v]; if(!rows)return false;
-  const H=['Area km²','Stage %','Wells','Recharge ham/yr','Share of shortfall','Runoff ham/yr','Families served'];
+  const H=['Area km²','Stage %','Wells','Est. recharge capacity ham/yr','Share of shortfall','Runoff ham/yr','Families served'];
   const pick=r=>[r[1],r[2],r[3],r[4],r[6],r[8],r[10]];
   pop(`<div class="pp"><h3>${esc(v)} valley</h3><div class="meta">Recharge computation, March 2026 valley report</div>
   <div style="overflow-x:auto"><table class="vt"><tr><th></th>${rows.map(r=>`<th>${esc(r[0].replace(' sub-watersheds',''))}</th>`).join('')}</tr>
